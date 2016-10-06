@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block style %}
+	<style type="text/css">
+		h1{
+			color:blue;
+		}
+	</style>
+{% endblock %}
+
+{% block content %}
+<h1>All products: </h1>
+{{queryset}}
+{% endblock%}
