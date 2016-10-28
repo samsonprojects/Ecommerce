@@ -1,5 +1,14 @@
+import os
 
-from django.http import Http404
+from mimetypes import guess_type
+
+from django.conf import settings
+from django.core.servers.basehttp import FileWrapper
+from django.core.files import File
+from django.core.urlresolvers import reverse
+
+from django.db.models import Q
+from django.http import Http404, HttpResponse
 from django.shortcuts import render, get_object_or_404
 from django.views.generic.detail import DetailView
 from django.views.generic.edit import CreateView, UpdateView
@@ -7,33 +16,63 @@ from django.views.generic.list import ListView
 
 from .models import Product
 from .forms import ProductAddForm, ProductModelForm
-from digitalmarket.mixins import MultiSlugMixin, SubmitBtnMixin
+from .mixins import ProductManagerMixin
+
+from digitalmarket.mixins import (
+		MultiSlugMixin,
+		SubmitBtnMixin,
+		LoginRequiredMixin)
 
 
-class ProductCreateView(SubmitBtnMixin, CreateView):
+class ProductCreateView(LoginRequiredMixin, SubmitBtnMixin, CreateView):
 
 	model = Product
 	template_name = "form.html"
 	form_class = ProductModelForm
-	success_url = "/products/add"
+	# success_url = "/products/"
 	submit_btn = "Add Product"
 
+	def form_valid(self, form):
+		user = self.request.user
+		form.instance.user = user
+		valid_data = super(ProductCreateView, self).form_valid(form)
+		form.instance.managers.add(user)
 
-class ProductUpdateView(SubmitBtnMixin, MultiSlugMixin, UpdateView):
+		return valid_data
+
+	# def get_success_url(self):
+	# 	return reverse("product_list_view")
+		
+
+class ProductUpdateView(ProductManagerMixin, SubmitBtnMixin, MultiSlugMixin, UpdateView):
 	model = Product
 	template_name = "form.html"
 	form_class = ProductModelForm
-	success_url = "/products/"
+	# success_url = "/products/"
 	submit_btn = "Update Product"
 
-	def get_object(self, *args, **kwargs):
-		"""it looks to see if user in managers and check if user is authenticated"""
-		user = self.request.user
-		obj = super(ProductUpdateView, self).get_object(*args, **kwargs) #superclass of current view
-		if obj.user == user or user in obj.managers.all():
-			return obj
-		else:
-			raise Http404
+
+class ProductDownloadView(MultiSlugMixin, DetailView):
+	model = Product
+
+	def get(self, request, *args, **kwargs):
+			obj = self.get_object()
+			if obj in request.user.myproducts.products.all():
+				filepath = os.path.join(settings.PROTECTED_ROOT, obj.media.path)
+				guessed_type = guess_type(filepath)[0]
+				filename = open(filepath, 'rb')
+				mimetype = 'application/force-download'
+
+				if guessed_type:
+					mimetype = guessed_type
+				response = HttpResponse(filename, content_type=mimetype)
+
+				if not request.GET.get("preview"):
+					response["Content-Disposition"] = "attachment; filename=%s" % (obj.media.name)
+				response["X-SendFile"] = str(obj.media.name)	#related to different types of servers
+				return response
+			else:
+				raise Http404
 
 
 class ProductDetailView(MultiSlugMixin, DetailView):
@@ -45,8 +84,14 @@ class ProductListView(ListView):
 
 	def get_queryset(self, *args, **kwargs):
 		qs = super(ProductListView, self).get_queryset(**kwargs)
-		# qs = qs.filter(title__icontains="aaaaaaa")
-		# print(qs)
+		query = self.request.GET.get("q")
+		if query:
+			q = qs.filter(
+				Q(title__icontains=query)|
+				Q(description__icontains=query)
+			).order_by("title")
+			# qs = qs.filter(title__icontains=query)
+			# print(qs)
 		return qs
 
 
@@ -61,7 +106,7 @@ def create_view(request):
 
 	template = "form.html"
 	context = {
-		"form":form,
+		"form": form,
 		"submit_btn":"submit button",
 
 	}

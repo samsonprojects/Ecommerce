@@ -1,5 +1,6 @@
 from django import forms 
 from .models import Product
+from django.utils.text import slugify
 
 PUBLISH_CHOICES = (
 	('publish', "Publish"),
@@ -43,7 +44,6 @@ class ProductAddForm(forms.Form):
 class ProductModelForm(forms.ModelForm):
 	publish = forms.ChoiceField(widget=forms.RadioSelect, choices=PUBLISH_CHOICES, required=False)
 
-
 	class Meta:
 		model = Product
 		fields = [
@@ -51,15 +51,31 @@ class ProductModelForm(forms.ModelForm):
 		"description",
 		"price",
 		]
-		
+	
+	def clean(self, *args, **kwargs):
+		cleaned_data = super(ProductModelForm, self).clean(*args, **kwargs)
+		# title = cleaned_data.get("title")
+		# slug = slugify(title)
+		# qs = Product.objects.filter(slug=slug).exists()
+		# if qs:
+		# 	raise forms.ValidationError("Title is taken, new title is needed.Please try again.")
+		return cleaned_data
+
 	def clean_price(self):
-		price = self.cleaned_data("price")
-		if price <=1.00:
+		price = self.cleaned_data.get("price")
+		if price <= 1.00:
 			raise forms.ValidationError("Price must be greater than 1 ")
-		elif price >= 99.99:
+		elif price >= 100.00:
 			raise forms.ValidationError("Price must be below 100")
 		else:
 			return price
+
+	def clean_title(self):
+		title = self.cleaned_data.get("title")
+		if len(title) > 3:
+			return title
+		else:
+			raise forms.ValidationError("Title must be longer than 3")
 """
 	title = models.CharField(max_length=30) #;lasfdjksdl;aj;lasdjsdaj
 	slug = models.SlugField(blank=True) #unique=True
